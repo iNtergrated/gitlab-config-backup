@@ -1,4 +1,4 @@
-#!/usr/bin/sh -x
+#!/usr/bin/env bash
 # ------------------------------------------------------------------
 # Backup GitLab (Omnibus) Configuration
 # ------------------------------------------------------------------
@@ -22,24 +22,24 @@ BACKUP_NAME="$BACKUP_TIMESTAMP$BACKUP_BASE_NAME"
 # First check for the GitLab Config Folder
 #
 if [[ ! -d "$GITLAB_CONFIG_PATH" ]]; then
-    echo $COLOR_FAIL"GitLab config folder could not be found:"$COLOR_RESET$COLOR_PASS $GITLAB_CONFIG_PATH
+    echo -e $COLOR_FAIL"GitLab config folder could not be found:"$COLOR_RESET$COLOR_PASS $GITLAB_CONFIG_PATH
     exit -1
 fi
 
 if [[ ! -d "$GITLAB_BACKUP_PATH" ]]; then
     mkdir -p "$GITLAB_BACKUP_PATH"
-    echo $COLOR_PASS"Backup folder created..."$COLOR_RESET
-    echo "  -> $GITLAB_BACKUP_PATH/"
+    echo -e $COLOR_PASS"Backup folder created..."$COLOR_RESET
+    echo -e "  -> $GITLAB_BACKUP_PATH/"
 fi
 
 # Archive the config folder
-tar -zcvf "$BACKUP_NAME" "GITLAB_BACKUP_PATH"
+$(cd "$GITLAB_BACKUP_PATH"; tar -zcvf "$BACKUP_NAME" .)
 
 if [[ -f "$GITLAB_BACKUP_PATH/$BACKUP_NAME" ]]; then
-    echo $COLOR_PASS"Backup of GitLab configuration completed..."$COLOR_RESET
-    echo "  -> $GITLAB_BACKUP_PATH/$BACKUP_NAME"
+    echo -e $COLOR_PASS"Backup of GitLab configuration completed..."$COLOR_RESET
+    echo -e "  -> $GITLAB_BACKUP_PATH/$BACKUP_NAME"
     exit 0
 else
-    echo $COLOR_FAIL"Backup of GitLab configuration completed..."$COLOR_RESET
+    echo -e $COLOR_FAIL"Backup of GitLab configuration FAILED..."$COLOR_RESET
     exit 1
 fi
