@@ -10,4 +10,45 @@ Script to backup your [GitLab](https://about.gitlab.com/) [Omnibus](https://abou
 4. Link the script to a folder in your path, e.g. ```sudo ln -s $(pwd)/gitlab-config-backup /usr/local/sbin```
 3. Run the script with sudo ```sudo gitlab-config-backup```
 3. The script will by default attempt to upload to S3 bucket ```gitlab-config-backup``` to use a different bucket or path, run with the BUCKET/PATH as the argument, ```sudo gitlab-config-backup my-bucket/subfolder``` 
-ls
+
+##Defaults##
+
+```
+S3CMD_BIN_PATH="/usr/local/bin/s3cmd"
+S3CMD_CONFIG_PATH="$USER/.s3cmd"
+```
+
+
+##Options##
+
+```
+Backup and (optionally) upload your GitLab Omnibus configuration.
+
+Usage: gitlab-config-backup <S3 BUCKET_NAME/FOLDER> [options]...
+
+Options:
+
+  -h, --help
+      This help text.
+
+  -V, --version
+      Display version.
+
+  -q, --quiet
+      Hide all output.
+
+  -c, --color
+      Colorize output.
+
+  -p, --plain
+      Plain output, no formatting or color.
+
+  --s3cmd-config <file>
+      s3cmd configuration file.
+
+  --s3cmd-bin <file>
+      s3cmd binary.
+
+  --
+      Do not interpret any more arguments as options.
+```

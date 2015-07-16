@@ -3,6 +3,22 @@
 # Backup GitLab (Omnibus) Configuration
 # ------------------------------------------------------------------
 
+#
+# Exit Codes
+#      0    No Errors
+#     -1    Not run as root (use sudo)
+#     
+#   1-10    Parameter/Option Errors
+#      1    Could not find the S3 configuration file (--s3cmd-config)
+#      2    Could not find the S3 binary (--s3cmd-bin)
+#      3    Invalid option...
+#      
+#   10-20   Errors Running Script
+#      10   GitLab config folder could not be found...
+#      11   Local backup of GitLab configuration FAILED
+#      12   Upload to S3 FAILED... S3 path does not exis
+#      13   Upload failed, other S3 error
+
 # Text Colors
 COLOR_FAIL="\033[31m"
 COLOR_WARN="\033[33m"
@@ -14,11 +30,14 @@ COLOR_MAGENTA="\033[35m"
 
 
 # Config
-APP_NAME="gitlab-config-backup"
-APP_BIN_NAME=$(basename "$0")
-APP_VERSION="0.0.1"
+readonly APP_NAME="gitlab-config-backup"
+readonly APP_BIN_NAME=$(basename "$0")
+readonly APP_VERSION="0.1.0"
+APP_OUTPUT="plain"
 GITLAB_CONFIG_PATH="/etc/gitlab"
 GITLAB_BACKUP_PATH="/var/backups/gitlab-config"
+S3CMD_BIN_PATH="/usr/local/bin/s3cmd"
+S3CMD_CONFIG_PATH="$USER/.s3cmd"
 
 # Local Backup Configuration 
 BACKUP_BASE_NAME="_gitlab-omnibus-config.tar.gz"
@@ -28,82 +47,206 @@ BACKUP_NAME="$BACKUP_TIMESTAMP$BACKUP_BASE_NAME"
 # S3 Backup Configuration
 S3_PATH="s3://"$(echo ${1:-gitlab-config-backup}"/" | tr -d "s3://" | tr -s /)
 
-echo -e $COLOR_BOLD"Starting GitLab Configuration Backup..."$COLOR_RESET
+
+#
+# Usage Function
+#
+function __usage() {
+    echo "Backup and (optionally) upload your GitLab Omnibus configuration."
+    echo
+    echo "Usage: $APP_BIN_NAME <S3 BUCKET_NAME/FOLDER> [options]..."
+    echo
+    echo "Options:"
+    echo
+    echo "  -h, --help"
+    echo "      This help text."
+    echo
+    echo "  -V, --version"
+    echo "      Display version."
+    echo
+    echo "  -q, --quiet"
+    echo "      Hide all output."
+    echo
+    echo "  -c, --color"
+    echo "      Colorize output."
+    echo
+    echo "  -p, --plain"
+    echo "      Plain output, no formatting or color."
+    echo
+    echo "  --s3cmd-config <file>"
+    echo "      s3cmd configuration file."
+    echo
+    echo "  --s3cmd-bin <file>"
+    echo "      s3cmd binary."
+    echo
+    echo "  --"
+    echo "      Do not interpret any more arguments as options."
+    echo
+}
+
+__containsElement () {
+    for e in "${@:2}"; do 
+        if [[ "$e" = "$1" ]]; then
+            echo 1
+            return 0
+        fi
+    done
+    echo 0
+    return 1
+ }
+
+#
+# Output Wrapper
+#
+function __output () {
+    if [[ "$APP_OUTPUT" = "color" ]]; then
+        echo -e "$*"
+    elif [[ "$APP_OUTPUT" = "quiet" ]]; then
+        # No Output
+        echo -e "$*" > /dev/null
+    else
+        echo -e $(echo -e $* | sed -r 's/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[m|K]//g' )
+    fi
+}
+
+#
+# Check format
+
+if [[ $(__containsElement "-c" $*) = 1 || $(__containsElement "--color" $*) = 1 ]]; then
+    APP_OUTPUT="color"
+elif [[ $(__containsElement "-q" $*) = 1 || $(__containsElement "--quiet" $*) = 1 ]]; then
+    APP_OUTPUT="quiet"
+fi
+
+#
+# Parse Options/Arguments
+#
+while [ "$#" -gt 0 ]
+do
+    case "$1" in
+    -h|--help)
+        __usage
+        exit 0
+        ;;
+    -V|--version)
+        echo "$APP_BIN_NAME v$APP_VERSION"
+        exit 0
+        ;;
+    -q|--quiet)
+        ;;
+    -c|--color)
+        ;;
+    --s3cmd-config)
+        S3CMD_CONFIG_PATH="${2:-NULL}"
+        if [[ ! -f "$S3CMD_CONFIG_PATH" ]]; then
+            __output $COLOR_FAIL"Could not find the S3 configuration file: $S3CMD_CONFIG_PATH"$COLOR_RESET
+            exit 1
+        fi
+        shift
+        ;;
+    --s3cmd-bin)
+        S3CMD_BIN_PATH="${2:-NULL}"
+        if [[ ! -f "$S3CMD_BIN_PATH" ]]; then
+            __output $COLOR_FAIL"Could not find the S3 binary: $S3CMD_BIN_PATH"$COLOR_RESET
+            exit 2
+        fi
+        shift
+        ;;
+    --)
+        break
+        ;;
+    -*)
+        __output $COLOR_FAIL"Invalid option '$1'."$COLOR_PASS "Use --help to see the valid options"$COLOR_RESET >&2
+        __usage
+        exit 3
+        ;;
+    # an option argument, continue
+    *)
+        S3_PATH="s3://"$(echo ${1:-gitlab-config-backup}"/" | tr -d "s3://" | tr -s /)
+    ;;
+    esac
+    shift
+done
+
+#
+# Core Script
+#
+__output $COLOR_BOLD"Starting GitLab Configuration Backup..."$COLOR_RESET
 
 #
 # Script should only be run by root user
 # 
 if [ "$(id -u)" != "0" ]; then
-   echo -e "  -> "$COLOR_FAIL"This script must be run as "$COLOR_BOLD"root"$COLOR_RESET 1>&2
-   exit 1
+   __output "  -> "$COLOR_FAIL"This script must be run as "$COLOR_BOLD"root"$COLOR_RESET 1>&2
+   exit -1
 fi
 
 #
 # First check for the GitLab Config Folder
 #
 if [[ ! -d "$GITLAB_CONFIG_PATH" ]]; then
-    echo -e "  -> "$COLOR_FAIL"GitLab config folder could not be found..."$COLOR_RESET
-    echo -e "      * $GITLAB_CONFIG_PATH"
-    exit -1
+    __output "  -> "$COLOR_FAIL"GitLab config folder could not be found..."$COLOR_RESET
+    __output "      * $GITLAB_CONFIG_PATH"
+    exit 10
 else 
-    echo -e "  -> "$COLOR_PASS"GitLab config folder found..."$COLOR_RESET
-    echo -e "      * $GITLAB_CONFIG_PATH"
+    __output "  -> "$COLOR_PASS"GitLab config folder found..."$COLOR_RESET
+    __output "      * $GITLAB_CONFIG_PATH"
 fi
 
 if [[ ! -d "$GITLAB_BACKUP_PATH" ]]; then
     mkdir -p "$GITLAB_BACKUP_PATH"
-    echo -e "  -> "$COLOR_PASS"Backup folder created..."$COLOR_RESET
-    echo -e "      * $GITLAB_BACKUP_PATH/"
+    __output "  -> "$COLOR_PASS"Backup folder created..."$COLOR_RESET
+    __output "      * $GITLAB_BACKUP_PATH/"
 else
-    echo -e "  -> "$COLOR_PASS"Backup folder found..."$COLOR_RESET
-    echo -e "      * $GITLAB_BACKUP_PATH/"
+    __output "  -> "$COLOR_PASS"Backup folder found..."$COLOR_RESET
+    __output "      * $GITLAB_BACKUP_PATH/"
 fi
 
 # Archive the config folder
 $(cd "$GITLAB_BACKUP_PATH"; tar -zcvf "$BACKUP_NAME" "$GITLAB_CONFIG_PATH" >/dev/null 2>&1)
 
 if [[ -f "$GITLAB_BACKUP_PATH/$BACKUP_NAME" ]]; then
-    echo -e "  -> "$COLOR_PASS"Local backup of GitLab configuration completed..."$COLOR_RESET
-    echo -e "      * $GITLAB_BACKUP_PATH/$BACKUP_NAME"
+    __output "  -> "$COLOR_PASS"Local backup of GitLab configuration completed..."$COLOR_RESET
+    __output "      * $GITLAB_BACKUP_PATH/$BACKUP_NAME"
 else
-    echo -e "  -> "$COLOR_FAIL"Local backup of GitLab configuration FAILED..."$COLOR_RESET
-    exit 1
+    __output "  -> "$COLOR_FAIL"Local backup of GitLab configuration FAILED..."$COLOR_RESET
+    exit 11
 fi
 
 #
 # Check for s3cmd
 #
 if [[ -n $(command -v s3cmd) ]]; then
-    echo -e "  -> "$COLOR_PASS"s3cmd installed, checking for configuration..."$COLOR_RESET
+    __output "  -> "$COLOR_PASS"s3cmd installed, checking for configuration..."$COLOR_RESET
 else
-    echo -e "  -> "$COLOR_WARN"s3cmd NOT installed, backup will NOT be uploaded to s3"$COLOR_RESET
-    exit 2
+    __output "  -> "$COLOR_WARN"s3cmd NOT installed, backup will NOT be uploaded to s3"$COLOR_RESET
 fi
 
 #
 # Check to see if s3cmd has been configured
 #
 if [[ -f "$HOME/.s3cfg" ]]; then
-    echo -e "      * s3cmd configuration found"
+    __output "      * s3cmd configuration found"
 else 
     USE_S3=0
-    echo -e "      * "$COLOR_WARN"s3cmd configuration could NOT be found, backup will NOT be uploaded to s3"$COLOR_RESET 1>&2
-    echo -e "      * "$COLOR_WARN"Run s3cmd --configure to setup"$COLOR_RESET
-    exit 3
+    __output "      * "$COLOR_WARN"s3cmd configuration could NOT be found, backup will NOT be uploaded to s3"$COLOR_RESET 1>&2
+    __output "      * "$COLOR_WARN"Run s3cmd --configure to setup"$COLOR_RESET
 fi
 
-echo -e "      * Uploading $BACKUP_NAME to $S3_PATH..."
+__output "      * Uploading $BACKUP_NAME to $S3_PATH..."
 S3_UPLOAD_RESULT=$(s3cmd put --no-progress "$GITLAB_BACKUP_PATH/$BACKUP_NAME" "$S3_PATH" 2>&1)
 S3_UPLOAD_RETURNED="$?"
 
 if [[ $S3_UPLOAD_RETURNED = 0 ]]; then
-    echo -e "      * Upload to S3 completed "$COLOR_PASS"successfully"$COLOR_RESET
+    __output "      * Upload to S3 completed "$COLOR_PASS"successfully"$COLOR_RESET
+    exit 0
 elif [[ $S3_UPLOAD_RETURNED = 12 ]]; then
-    echo -e "      * "$COLOR_FAIL"Upload to S3 FAILED... bucket $S3_PATH does not exist"$COLOR_RESET
-    echo -e "      * Run  with the bucket name:"
-    echo -e "          e.g. "$COLOR_BLUE$APP_BIN_NAME$COLOR_MAGENTA" my-bucket"$COLOR_RESET
+    __output "      * "$COLOR_FAIL"Upload to S3 FAILED... bucket $S3_PATH does not exist"$COLOR_RESET
+    __output "      * Run  with the bucket name:"
+    __output "          e.g. "$COLOR_BLUE$APP_BIN_NAME$COLOR_MAGENTA" my-bucket"$COLOR_RESET
+    exit 12
 else
-    echo -e "      * "$COLOR_FAIL"Upload to S3 FAILED... (Error $S3_UPLOAD_RETURNED)"$COLOR_RESET
-    echo -e "         - $S3_UPLOAD_RESULT"
-
+    __output "      * "$COLOR_FAIL"Upload to S3 FAILED... (Error $S3_UPLOAD_RETURNED)"$COLOR_RESET
+    __output "         - $S3_UPLOAD_RESULT"
+    exit 13
 fi
