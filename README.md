@@ -49,6 +49,9 @@ Options:
   --s3cmd-bin <file>
       s3cmd binary.
 
+  --no-s3
+      Do not upload to AWS S3.
+
   --
       Do not interpret any more arguments as options.
 ```
