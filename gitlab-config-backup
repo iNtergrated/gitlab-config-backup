@@ -41,7 +41,7 @@ GITLAB_BACKUP_PATH="/var/backups/gitlab-config"
 S3CMD_BIN_PATH="/usr/local/bin/s3cmd"
 S3CMD_CONFIG_PATH="$HOME/.s3cfg"
 
-S3_PATH="gitlab-config-backup"
+S3_PATH="s3://gitlab-config-backup"
 
 # Local Backup Configuration 
 BACKUP_BASE_NAME="_gitlab-omnibus-config.tar.gz"
