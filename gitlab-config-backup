@@ -9,17 +9,19 @@
 #     -1    Not run as root (use sudo)
 #     
 #   1-10    Parameter/Option Errors
-#      1    Could not find the S3 configuration file (--s3cmd-config)
-#      2    Could not find the S3 binary (--s3cmd-bin)
-#      3    Invalid option...
+#      1    Could not find the GitLab config source directory (-C, --gitlab-config)
+#      2    You must provide a path for: -b, --backup-path (-b, --backup-path)
+#      3    Could not find the S3 configuration file (--s3cmd-config)
+#      4    Could not find the S3 binary (--s3cmd-bin)
+#      5    Invalid option...
 #      
-#   10-20   Errors Running Script
-#      10   GitLab config folder could not be found...
-#      11   Local backup of GitLab configuration FAILED
-#      12   s3cmd NOT installed
-#      13   s3cmd configuration could NOT be found
-#      14   Upload to S3 FAILED... S3 path does not exist
-#      15   Upload failed, other S3 error
+#   11-20   Errors Running Script
+#      11   GitLab config folder could not be found...
+#      12   Local backup of GitLab configuration FAILED
+#      13   s3cmd NOT installed
+#      14   s3cmd configuration could NOT be found
+#      15   Upload to S3 FAILED... S3 path does not exist
+#      16   Upload failed, other S3 error
 
 # Text Colors
 COLOR_FAIL="\033[31m"
@@ -73,6 +75,14 @@ function __usage() {
     echo "  -p, --plain"
     echo "      Plain output, no formatting or color."
     echo
+    echo "  -C, --gitlab-config <folder>"
+    echo "      Path to the GitLab Omnibus config folder"
+    echo "      default: $GITLAB_CONFIG_PATH"
+    echo
+    echo "  -b, --backup-path <folder>"
+    echo "      Path to folder where you want to store backups."
+    echo "      default: $GITLAB_BACKUP_PATH"
+    echo
     echo "  --s3cmd-config <file>"
     echo "      s3cmd configuration file."
     echo
@@ -85,6 +95,33 @@ function __usage() {
     echo "  --"
     echo "      Do not interpret any more arguments as options."
     echo
+    echo "   <<------------------------- Exit Codes ------------------------->>"
+    echo
+    echo " ----------------------------------------------------------------------"
+    echo " |                              General                               |"
+    echo " ======================================================================"
+    echo " |  0 | No Errors                                                     |"
+    echo " | -1 | Not run as root (use sudo)                                    |"
+    echo " ----------------------------------------------------------------------"
+    echo " |                      Parameter/Option  [1-10]                      |"
+    echo " ======================================================================"
+    echo " |  1 | Could not find the GitLab config source directory             |"
+    echo " |----|  + (-C, --gitlab-config)                                      |"
+    echo " |  2 | You must provide a path for: -b, --backup-path                |"
+    echo " |----|  + (-b, --backup-path)                                        |"
+    echo " |  3 | Could not find the S3 configuration file (--s3cmd-config)     |"
+    echo " |  4 | Could not find the S3 binary (--s3cmd-bin)                    |"
+    echo " |  5 | Invalid option...                                             |"
+    echo " ----------------------------------------------------------------------"
+    echo " |                        Core Script  [11-20]                        |"
+    echo " ======================================================================"
+    echo " | 11 | GitLab config folder could not be found...                    |"
+    echo " | 12 | Local backup of GitLab configuration FAILED                   |"
+    echo " | 13 | s3cmd NOT installed                                           |"
+    echo " | 14 | s3cmd configuration could NOT be found                        |"
+    echo " | 15 | Upload to S3 FAILED... S3 path does not exist                 |"
+    echo " | 16 | Upload failed, other S3 error                                 |"
+    echo " ----------------------------------------------------------------------"
 }
 
 __containsElement () {
@@ -139,11 +176,27 @@ do
             ;;
         -c|--color)
             ;;
+        -C|--gitlab-config)
+            GITLAB_CONFIG_PATH="${2:-NULL}"
+            if [[ ! -d "$GITLAB_CONFIG_PATH" ]]; then
+                __output $COLOR_FAIL"Could not find the GitLab config source directory: $GITLAB_CONFIG_PATH"$COLOR_RESET
+                exit 1
+            fi
+            shift
+            ;;
+        -b|--backup-path)
+            GITLAB_BACKUP_PATH="${2:-NULL}"
+            if [[ "$GITLAB_BACKUP_PATH" == "NULL" ]]; then
+                __output $COLOR_FAIL"You must provide a path for: -b, --backup-path"$COLOR_RESET
+                exit 2
+            fi
+            shift
+            ;;
         --s3cmd-config)
             S3CMD_CONFIG_PATH="${2:-NULL}"
             if [[ ! -f "$S3CMD_CONFIG_PATH" ]]; then
                 __output $COLOR_FAIL"Could not find the S3 configuration file: $S3CMD_CONFIG_PATH"$COLOR_RESET
-                exit 1
+                exit 3
             fi
             shift
             ;;
@@ -151,7 +204,7 @@ do
             S3CMD_BIN_PATH="${2:-NULL}"
             if [[ ! -f "$S3CMD_BIN_PATH" ]]; then
                 __output $COLOR_FAIL"Could not find the S3 binary: $S3CMD_BIN_PATH"$COLOR_RESET
-                exit 2
+                exit 4
             fi
             shift
             ;;
@@ -164,7 +217,7 @@ do
             ;;
         -*)
             __output $COLOR_FAIL"Invalid option '$1'."$COLOR_PASS "Use --help to see the valid options"$COLOR_RESET >&2
-            exit 3
+            exit 5
             ;;
         # an option argument, continue
         *)
@@ -192,20 +245,20 @@ fi
 #
 if [[ ! -d "$GITLAB_CONFIG_PATH" ]]; then
     __output "  -> "$COLOR_FAIL"GitLab config folder could not be found..."$COLOR_RESET
-    __output "      * $GITLAB_CONFIG_PATH"
-    exit 10
+    __output "      + $GITLAB_CONFIG_PATH"
+    exit 11
 else 
     __output "  -> "$COLOR_PASS"GitLab config folder found..."$COLOR_RESET
-    __output "      * $GITLAB_CONFIG_PATH"
+    __output "      + $GITLAB_CONFIG_PATH"
 fi
 
 if [[ ! -d "$GITLAB_BACKUP_PATH" ]]; then
     mkdir -p "$GITLAB_BACKUP_PATH"
     __output "  -> "$COLOR_PASS"Backup folder created..."$COLOR_RESET
-    __output "      * $GITLAB_BACKUP_PATH/"
+    __output "      + $GITLAB_BACKUP_PATH"
 else
     __output "  -> "$COLOR_PASS"Backup folder found..."$COLOR_RESET
-    __output "      * $GITLAB_BACKUP_PATH/"
+    __output "      +  $GITLAB_BACKUP_PATH"
 fi
 
 # Archive the config folder
@@ -213,10 +266,10 @@ fi
 
 if [[ -f "$GITLAB_BACKUP_PATH/$BACKUP_NAME" ]]; then
     __output "  -> "$COLOR_PASS"Local backup of GitLab configuration completed..."$COLOR_RESET
-    __output "      * $GITLAB_BACKUP_PATH/$BACKUP_NAME"
+    __output "      + $GITLAB_BACKUP_PATH/$BACKUP_NAME"
 else
     __output "  -> "$COLOR_FAIL"Local backup of GitLab configuration FAILED..."$COLOR_RESET
-    exit 11
+    exit 12
 fi
 
 if [[ "$NO_S3" = 1 ]]; then
@@ -229,35 +282,35 @@ if [[ -f "$S3CMD_BIN_PATH" ]]; then
     __output "  -> "$COLOR_PASS"s3cmd installed, checking for configuration..."$COLOR_RESET
 else
     __output "  -> "$COLOR_WARN"s3cmd NOT installed, backup will NOT be uploaded to s3"$COLOR_RESET
-    exit 12
+    exit 13
 fi
 
 #
 # Check to see if s3cmd has been configured
 #
 if [[ -f "$S3CMD_CONFIG_PATH" ]]; then
-    __output "      * s3cmd configuration found"
+    __output "      + s3cmd configuration found"
 else 
     USE_S3=0
-    __output "      * "$COLOR_WARN"s3cmd configuration could NOT be found, backup will NOT be uploaded to s3"$COLOR_RESET 1>&2
-    __output "      * "$COLOR_WARN"Run s3cmd --configure to setup"$COLOR_RESET
-    exit 13
+    __output "      + "$COLOR_WARN"s3cmd configuration could NOT be found, backup will NOT be uploaded to s3"$COLOR_RESET 1>&2
+    __output "      + "$COLOR_WARN"Run s3cmd --configure to setup"$COLOR_RESET
+    exit 14
 fi
 
-__output "      * Uploading $BACKUP_NAME to $S3_PATH..."
+__output "      + Uploading $BACKUP_NAME to $S3_PATH..."
 S3_UPLOAD_RESULT=$($S3CMD_BIN_PATH put --no-progress "$GITLAB_BACKUP_PATH/$BACKUP_NAME" "$S3_PATH" 2>&1)
 S3_UPLOAD_RETURNED="$?"
 
 if [[ $S3_UPLOAD_RETURNED = 0 ]]; then
-    __output "      * Upload to S3 completed "$COLOR_PASS"successfully"$COLOR_RESET
+    __output "      + Upload to S3 completed "$COLOR_PASS"successfully"$COLOR_RESET
     exit 0
 elif [[ $S3_UPLOAD_RETURNED = 12 ]]; then
-    __output "      * "$COLOR_FAIL"Upload to S3 FAILED... bucket $S3_PATH does not exist"$COLOR_RESET
-    __output "      * Run  with the bucket name:"
+    __output "      + "$COLOR_FAIL"Upload to S3 FAILED... bucket $S3_PATH does not exist"$COLOR_RESET
+    __output "      + Run  with the bucket name:"
     __output "          e.g. "$COLOR_BLUE$APP_BIN_NAME$COLOR_MAGENTA" my-bucket"$COLOR_RESET
-    exit 14
-else
-    __output "      * "$COLOR_FAIL"Upload to S3 FAILED... (Error $S3_UPLOAD_RETURNED)"$COLOR_RESET
-    __output "         - $S3_UPLOAD_RESULT"
     exit 15
+else
+    __output "      + "$COLOR_FAIL"Upload to S3 FAILED... (Error $S3_UPLOAD_RETURNED)"$COLOR_RESET
+    __output "         - $S3_UPLOAD_RESULT"
+    exit 16
 fi
